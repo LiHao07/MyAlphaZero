@@ -242,7 +242,7 @@ class Game(object):
                 return winner
 
     def start_self_play(self, player, is_shown=0, temp=1e-3):
-        #player1自博弈 temp-mct里不知道干什么用的参数 
+        #player1自博弈 temp-mcts控制exploration的参数 
         #返回胜利方以及(棋局, 对应的动作概率（策略） , 该方最终是否胜利)
         states, mcts_probs, current_players = [], [], []#存数据
         while True:
