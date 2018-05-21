@@ -1,14 +1,27 @@
 import numpy as np
+import copy
+import sys
+from mcts_alphaZero import MCTSPlayer_alphaZero
+from mcts_pure import MCTSPlayer
+from policy_value_net import PolicyValueNet
 
-N=8
+N = 8
 
 class Board(object):
-    def __init__(self,):
-        self.board=np.zeros((N,N))#棋盘 0-空 1-玩家1 2-玩家2
+    def __init__(self):
+        self.board = np.zeros((N,N))#棋盘 0-空 1-玩家1 2-玩家2
         self.player=1 #目前玩家
         self.n_skip=0#目前连续跳过回合，等于2时结束游戏
         self.p=np.ones((8,8))#可落子位置 0-不可落子 1-可落子
         self.end=False
+        self.availables = self.get_availables()
+    def init(self):
+        self.board = np.zeros((N,N))#棋盘 0-空 1-玩家1 2-玩家2
+        self.player=1 #目前玩家
+        self.n_skip=0#目前连续跳过回合，等于2时结束游戏
+        self.p=np.ones((8,8))#可落子位置 0-不可落子 1-可落子
+        self.end=False
+        self.availables = self.get_availables()
         
     def find(self,x):#并查集
         if(self.fa[x]==x):
@@ -28,7 +41,7 @@ class Board(object):
             self.fa[x]=y
             
     def get_availables(self):#返回可落子位置的数字形式0~63
-        ans=[]
+        ans=[64]
         for i in range(8):
             for j in range(8):
                 if(self.p[i][j]==1):
@@ -129,17 +142,20 @@ class Board(object):
     def turn(self):#换手
         self.player=3-self.player
         self.update_p()
+        self.availables = self.get_availables()
         
-    def move(self, x , y):#落子
-        x,y=int(x),int(y)
-        if(x==-1 and y==-1):
+    def move(self, action):#落子
+        if(action==64):
             self.n_skip+=1
             if(self.n_skip>=2):
                 self.end=True
             self.turn()
             return True
+        x,y=int(action//8),int(action%8)
         if((x not in range(8)) or (y not in range(8)) or self.p[x][y]==0):
-            print('can not move here!')
+            print('can not move here!',self.p[x][y]," ( ",x,y," ) ")
+            print(self.p)
+            sys.exit()
             return False
         self.n_skip=0
         self.board[x][y]=self.player
@@ -167,8 +183,8 @@ class Board(object):
         for i in range(8):
             for j in range(8):
                 if(self.board[i][j]!=0):
-                    tot[self.board[i][j]]+=1
-                    colf=self.board[i][j]
+                    tot[int(self.board[i][j])]+=1
+                    col=int(self.board[i][j])
                     if(i>0 and self.board[i-1][j]==0):
                         tmp[self.fa[i*8+j-8]][col]=1
                     if(j>0 and self.board[i][j-1]==0):
@@ -192,7 +208,7 @@ class Board(object):
         
     def game_end(self):#判断是否结束并返回胜利方
         if(self.n_skip>=2):
-            return True,get_winner()
+            return True,self.get_winner()
         return False,-1
 
     def graphic(self):#画棋盘
@@ -212,24 +228,47 @@ class Board(object):
                     s+=" ."
             s+="\n"
         print(s)
-
+    def num(self):
+        ans=int(0)
+        for i in range(8):
+            for j in range(8):
+                ans=int(ans*3+int(self.board[i][j]))
+        return ans
 
 class Game(object):
 
     def __init__(self, Board):
         self.Board = Board
+        self.rec_board=[]
+    def choose(self,acts,probs):
+        while(1):
+            move=np.random.choice(acts,p=probs)
+            board2=copy.deepcopy(self.Board)
+            board2.move(move)
+            tmp=board2.num()
+            if(move==64 or (tmp not in self.rec_board)):
+                return move
 
     def start_play(self, player1, player2, is_shown=1):#两人对战 player1先手 返回胜利方
+        self.Board.init()
         player1.set_player_ind(1)
         player2.set_player_ind(2)
         players = {1: player1, 2: player2}
         if is_shown:
-            self.board.graphic()
+            self.Board.graphic()
+        Step=0
+        self.rec_board=[self.Board.num()]
         while True:
+            Step+=1
+            print("Step : %d "%Step)
             current_player = self.Board.player
             player_in_turn = players[current_player]
-            move = player_in_turn.get_action(self.Board)
+            acts,probs = player_in_turn.get_action(self.Board)
+            move=self.choose(acts,probs)
             self.Board.move(move)
+            player_in_turn.update(move)
+            self.rec_board.append(self.Board.num())
+
             if is_shown:
                 self.Board.graphic()
             end, winner = self.Board.game_end()
@@ -245,14 +284,25 @@ class Game(object):
         #player1自博弈 temp-mcts控制exploration的参数 
         #返回胜利方以及(棋局, 对应的动作概率（策略） , 该方最终是否胜利)
         states, mcts_probs, current_players = [], [], []#存数据
+        self.Board.init()
+        self.rec_board=[self.Board.num()]
+        Step=0
+        if is_shown:
+            self.Board.graphic()
         while True:
-            move, move_probs = player.get_action(self.board,temp=temp,return_prob=1)
+            Step+=1
+            print("Step : %d "%Step)
+            acts,probs = player.get_action(self.Board, temp = temp, return_prob = 1)
+            move=self.choose(acts,probs)
+            self.Board.move(move)
             
             states.append(self.Board.board)
-            mcts_probs.append(move_probs)
+            mcts_probs.append(probs)
             current_players.append(self.Board.player)
             
-            self.Board.move(move)
+            player.update(move)
+            self.rec_board.append(self.Board.num())
+
             if is_shown:
                 self.Board.graphic()
             end, winner = self.Board.game_end()
@@ -270,3 +320,11 @@ class Game(object):
                     else:
                         print("Game end. Tie")
                 return winner, zip(states, mcts_probs, winners_z)
+net=PolicyValueNet()
+Player1=MCTSPlayer(n_playout=1)
+Player2=MCTSPlayer(n_playout=1)
+real_board=Board()
+game=Game(real_board)
+
+winner=game.start_play(Player1,Player2,is_shown=1)
+

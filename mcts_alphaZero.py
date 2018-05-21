@@ -1,7 +1,7 @@
 import numpy as np
 import copy
-
-
+from policy_value_net import PolicyValueNet
+N=8
 def softmax(x):
     probs = np.exp(x - np.max(x))
     probs /= np.sum(probs)
@@ -66,19 +66,22 @@ class MCTS(object):
             if node.is_leaf():
                 break
             action, node = node.select(self._c_puct)
-            state.do_move(action)
+            #print(1)
+            state.move(action)
+            #print(2)
 
         # expand 阶段, 这个MCTS不存在simulate阶段
+        
         action_probs, leaf_value = self._policy(state)
         end, winner = state.game_end()
         if not end:
             node.expand(action_probs)
         else:
-            if winner == -1:
+            if winner == 0:
                 leaf_value = 0.0
             else:
                 leaf_value = (
-                    1.0 if winner == state.get_current_player() else -1.0
+                    1.0 if winner == state.player else -1.0
                 )
 
         node.update_recursive(-leaf_value)
@@ -90,6 +93,7 @@ class MCTS(object):
 
         act_visits = [(act, node._n_visits)
                       for act, node in self._root._children.items()]
+        #print(act_visits)
         acts, visits = zip(*act_visits)
         act_probs = softmax(1.0/temp * np.log(np.array(visits) + 1e-10))
 
@@ -106,9 +110,10 @@ class MCTS(object):
         return "MCTS"
 
 
-class MCTSPlayer(object):
+class MCTSPlayer_alphaZero(object):
     def __init__(self, policy_value_function,
-                 c_puct=5, n_playout=2000, is_selfplay=0):
+                 c_puct=5, n_playout=2000, is_selfplay=0,name="MCTSPlayer_alphaZero"):
+        self.name=name
         self.mcts = MCTS(policy_value_function, c_puct, n_playout)
         self._is_selfplay = is_selfplay
 
@@ -117,31 +122,23 @@ class MCTSPlayer(object):
 
     def reset_player(self):
         self.mcts.update_with_move(-1)
-
+    def update(self,move):
+        if(self._is_selfplay):
+            self.mcts.update_with_move(move) 
+        else:
+            self.mcts.update_with_move(-1)    
     def get_action(self, board, temp=1e-3, return_prob=0):
         # 给定棋盘状态，返回最佳的move（和move_probs向量）
         sensible_moves = board.availables
-        move_probs = np.zeros(board.width*board.height)
+        move_probs = np.zeros(N*N+1)
         # 论文中的pi向量
         if len(sensible_moves) > 0:
             acts, probs = self.mcts.get_move_probs(board, temp)
             move_probs[list(acts)] = probs
             if self._is_selfplay:
                 # 训练时加入噪音
-                move = np.random.choice(
-                    acts,
-                    p=0.75*probs + 0.25*np.random.dirichlet(0.3*np.ones(len(probs)))
-                )
-                self.mcts.update_with_move(move)
-            else:
-                move = np.random.choice(acts, p=probs)
-                self.mcts.update_with_move(-1)
-
-
-            if return_prob:
-                return move, move_probs
-            else:
-                return move
+                probs=0.75*probs + 0.25*np.random.dirichlet(0.3*np.ones(len(probs)))
+            return acts,probs
         else:
             print("WARNING: the board is full")
 

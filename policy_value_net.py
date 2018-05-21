@@ -13,7 +13,7 @@ def set_learning_rate(optimizer, lr):
 
 
 class Net(nn.Module):
-    def __init__(self, board_width, board_height):
+    def __init__(self):
         super(Net, self).__init__()
         
         self.conv1 = nn.Conv2d(1, 32, kernel_size=3, padding=1)
@@ -21,7 +21,7 @@ class Net(nn.Module):
         self.conv3 = nn.Conv2d(64, 128, kernel_size=3, padding=1)
         
         self.act_conv1 = nn.Conv2d(128, 4, kernel_size=1)
-        self.act_fc1 = nn.Linear(4*N*N,N*N)
+        self.act_fc1 = nn.Linear(4*N*N,N*N+1)
         
         self.val_conv1 = nn.Conv2d(128, 2, kernel_size=1)
         self.val_fc1 = nn.Linear(2*N*N, 64)
@@ -35,8 +35,8 @@ class Net(nn.Module):
         
         x_act = F.relu(self.act_conv1(x))
         x_act = x_act.view(-1, 4*N*N)
-        x_act = F.log_softmax(self.act_fc1(x_act))
-        
+        x_act = F.log_softmax(self.act_fc1(x_act),dim=1)
+
         x_val = F.relu(self.val_conv1(x))
         x_val = x_val.view(-1, 2*N*N)
         x_val = F.relu(self.val_fc1(x_val))
@@ -47,14 +47,12 @@ class Net(nn.Module):
 class PolicyValueNet():
     def __init__(self , model_file=None, use_gpu=False):#输入：是否从已有model中载入，是否使用gpu
         self.use_gpu = use_gpu
-        self.board_width = board_width
-        self.board_height = board_height
         self.l2_const = 1e-4  # coef of l2 penalty
         
         if self.use_gpu:
-            self.policy_value_net = Net(board_width, board_height).cuda()
+            self.policy_value_net = Net().cuda()
         else:
-            self.policy_value_net = Net(board_width, board_height)
+            self.policy_value_net = Net()
         self.optimizer = optim.Adam(self.policy_value_net.parameters(),weight_decay=self.l2_const)
 
         if model_file:
@@ -73,13 +71,16 @@ class PolicyValueNet():
             return act_probs, value.data.numpy()
 
     def policy_value_fn(self, Board):#得到所有可行位置下棋的概率
-        legal_positions = board.get_availables()
-        current_state = np.ascontiguousarray(board.Board.reshape(-1, 1, N, N))
+        #Board.graphic()
+        legal_positions = Board.availables
+        #print(legal_positions)
+        current_state = np.ascontiguousarray(Board.board.reshape(-1, 1, N, N))
         if self.use_gpu:
             log_act_probs, value = self.policy_value_net(Variable(torch.from_numpy(current_state)).cuda().float())
             act_probs = np.exp(log_act_probs.data.cpu().numpy().flatten())
         else:
-            log_act_probs, value = self.policy_value_net(Variable(torch.from_numpy(current_state)).float())
+            log_act_probs, value = self.policy_value_net(Variable(torch
+                .from_numpy(current_state)).float())
             act_probs = np.exp(log_act_probs.data.numpy().flatten())
         act_probs = zip(legal_positions, act_probs[legal_positions])
         value = value.data[0][0]
