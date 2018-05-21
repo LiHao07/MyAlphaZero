@@ -86,7 +86,7 @@ class MCTS(object):
 
         node.update_recursive(-leaf_value)
 
-    def get_move_probs(self, state, temp=1e-3):
+    def get_move_probs(self, state, temp=1e-3 , is_selfplay=1):
         for n in range(self._n_playout):
             state_copy = copy.deepcopy(state)
             self._playout(state_copy)
@@ -95,9 +95,22 @@ class MCTS(object):
                       for act, node in self._root._children.items()]
         #print(act_visits)
         acts, visits = zip(*act_visits)
-        act_probs = softmax(1.0/temp * np.log(np.array(visits) + 1e-10))
+        act_probs=np.zeros(65)
+        for i in range(len(acts)):
+            act_probs[int(acts[i])]=visits[i]
 
-        return acts, act_probs
+        act_probs = softmax(np.log(np.array(act_probs) + 1e-10))
+        act_probs/=np.sum(act_probs)
+
+        if is_selfplay==1:# 训练时加入噪音
+                act_probs=0.75*act_probs + 0.25*np.random.dirichlet(0.3*np.ones(len(act_probs)))
+
+        for i in range(65):
+            if i not in acts:
+                act_probs[i]=0
+                
+        act_probs/=np.sum(act_probs)
+        return act_probs
 
     def update_with_move(self, last_move):
         if last_move in self._root._children:
@@ -133,12 +146,8 @@ class MCTSPlayer_alphaZero(object):
         move_probs = np.zeros(N*N+1)
         # 论文中的pi向量
         if len(sensible_moves) > 0:
-            acts, probs = self.mcts.get_move_probs(board, temp)
-            move_probs[list(acts)] = probs
-            if self._is_selfplay:
-                # 训练时加入噪音
-                probs=0.75*probs + 0.25*np.random.dirichlet(0.3*np.ones(len(probs)))
-            return acts,probs
+            probs = self.mcts.get_move_probs(board, temp,self._is_selfplay)
+            return probs
         else:
             print("WARNING: the board is full")
 

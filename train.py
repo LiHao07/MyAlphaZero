@@ -1,35 +1,21 @@
-# -*- coding: utf-8 -*-
-"""
-An implementation of the training pipeline of AlphaZero for Gomoku
-
-@author: Junxiao Song
-"""
-
-#from __future__ import print_function
 import random
 import numpy as np
 from collections import defaultdict, deque
 from game import Board, Game
 from mcts_pure import MCTSPlayer as MCTS_Pure
 from mcts_alphaZero import MCTSPlayer_alphaZero as MCTSPlayer
-from policy_value_net import PolicyValueNet  # Theano and Lasagne
-#from policy_value_net_pytorch import PolicyValueNet  # Pytorch
-#from policy_value_net_tensorflow import PolicyValueNet # Tensorflow
-#from policy_value_net_keras import PolicyValueNet # Keras
-
+from policy_value_net import PolicyValueNet  
+N=8
 class TrainPipeline():
     def __init__(self, init_model=None):
-        # params of the board and the game
-        self.board_width = 8
-        self.board_height = 8
-#        self.n_in_row = 4
         self.board = Board()
         self.game = Game(self.board)
         # training params
         self.learn_rate = 2e-3
         self.lr_multiplier = 1.0  # adaptively adjust the learning rate based on KL
+#                                                      self.board_height,
         self.temp = 1.0  # the temperature param
-        self.n_playout = 4  # num of simulations for each move
+        self.n_playout = 400  # num of simulations for each move
         self.c_puct = 5
         self.buffer_size = 10000
         self.batch_size = 512  # mini-batch size for training
@@ -40,19 +26,15 @@ class TrainPipeline():
         self.check_freq = 50
         self.game_batch_num = 1500
         self.best_win_ratio = 0.0
-        # num of simulations used for the pure mcts, which is used as
-        # the opponent to evaluate the trained policy
-        self.pure_mcts_playout_num = 10
+        self.pure_mcts_playout_num = 1000
         if init_model:
-            # start training from an initial policy-value net
             self.policy_value_net = PolicyValueNet(model_file = init_model, use_gpu = False)
         else:
-            # start training from a new policy-value net
             self.policy_value_net = PolicyValueNet(use_gpu = False)
         self.mcts_player = MCTSPlayer(self.policy_value_net.policy_value_fn,
-                                      c_puct=self.c_puct,
-                                      n_playout=self.n_playout,
-                                      is_selfplay=1)
+                                      c_puct = self.c_puct,
+                                      n_playout = self.n_playout,
+                                      is_selfplay = 1)
         print("init done")
 
     def get_equi_data(self, play_data):
@@ -60,10 +42,14 @@ class TrainPipeline():
         play_data: [(state, mcts_prob, winner_z), ..., ...]
         """
         extend_data = []
+        print("play_data = {}".format(play_data))
         for state, mcts_porb, winner in play_data:
             for i in [1, 2, 3, 4]:
                 # rotate counterclockwise
-                equi_state = np.array([np.rot90(s, i) for s in state])
+#                print("state[0] = {}".format(state[0]))
+#                print("state = {}".format(state))
+#                equi_state = np.array([np.rot90(s, i) for s in state])
+                equi_state = np.rot90(state, i)
                 equi_mcts_prob = np.rot90(np.flipud(
                     mcts_porb.reshape(self.board_height, self.board_width)), i)
                 extend_data.append((equi_state,
@@ -81,11 +67,13 @@ class TrainPipeline():
         """collect self-play data for training"""
         for i in range(n_games):
             winner, play_data = self.game.start_self_play(self.mcts_player,
-                                                          temp=self.temp)
+                                                          temp = self.temp,
+                                                          is_shown = 1)
             play_data = list(play_data)[:]
             self.episode_len = len(play_data)
             # augment the data
-            play_data = self.get_equi_data(play_data)
+#            print(play_data)
+#            play_data = self.get_equi_data(play_data)
             self.data_buffer.extend(play_data)
 
     def policy_update(self):
@@ -164,8 +152,7 @@ class TrainPipeline():
                 print("selfplay....")
                 self.collect_selfplay_data(self.play_batch_size)
                 print("selfplay done")
-                print("batch i = {}, episode_len = {}".format(
-                        i+1, self.episode_len))
+                print("batch i = {}, episode_len = {}".format(i+1, self.episode_len))
                 if len(self.data_buffer) > self.batch_size:
                     loss, entropy = self.policy_update()
                 # check the performance of the current model,
@@ -190,3 +177,5 @@ class TrainPipeline():
 if __name__ == '__main__':
     training_pipeline = TrainPipeline()
     training_pipeline.run()
+
+

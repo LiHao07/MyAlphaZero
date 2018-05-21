@@ -240,7 +240,11 @@ class Game(object):
     def __init__(self, Board):
         self.Board = Board
         self.rec_board=[]
-    def choose(self,acts,probs):
+    def choose(self,probs):
+        acts=range(0,65)
+        # for i in range(0,65):
+        #     if(probs[i]>0.0001):
+        #         print("%d %.4f"%(i,probs[i]))
         while(1):
             move=np.random.choice(acts,p=probs)
             board2=copy.deepcopy(self.Board)
@@ -264,8 +268,8 @@ class Game(object):
                 print("Step : %d "%Step)
             current_player = self.Board.player
             player_in_turn = players[current_player]
-            acts,probs = player_in_turn.get_action(self.Board)
-            move=self.choose(acts,probs)
+            probs = player_in_turn.get_action(self.Board)
+            move=self.choose(probs)
             self.Board.move(move)
             player_in_turn.update(move)
             self.rec_board.append(self.Board.num())
@@ -294,11 +298,11 @@ class Game(object):
             Step+=1
             if is_shown:
                 print("Step : %d "%Step)
-            acts,probs = player.get_action(self.Board, temp = temp, return_prob = 1)
-            move=self.choose(acts,probs)
+            probs = player.get_action(self.Board, temp = temp, return_prob = 1)
+            move=self.choose(probs)
             self.Board.move(move)
             
-            states.append(self.Board.board)
+            states.append([self.Board.board])
             mcts_probs.append(probs)
             current_players.append(self.Board.player)
             
@@ -322,11 +326,11 @@ class Game(object):
                     else:
                         print("Game end. Tie")
                 return winner, zip(states, mcts_probs, winners_z)
-net=PolicyValueNet()
-Player1=MCTSPlayer(n_playout=1)
-Player2=MCTSPlayer(n_playout=1)
-real_board=Board()
-game=Game(real_board)
+# net=PolicyValueNet()
+# Player1=MCTSPlayer_alphaZero(net.policy_value_fn,n_playout=1,is_selfplay=1)
+# Player2=MCTSPlayer_alphaZero(net.policy_value_fn,n_playout=1,is_selfplay=1)
+# real_board=Board()
+# game=Game(real_board)
 
-winner=game.start_play(Player1,Player2,is_shown=0)
+# winner=game.start_play(Player1,Player2,is_shown=1)
 

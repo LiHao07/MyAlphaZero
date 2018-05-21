@@ -89,6 +89,7 @@ class PolicyValueNet():
     def train_step(self, state_batch, mcts_probs, winner_batch, lr):
         #输入：棋盘，策略，该方是否胜利，lr 
         #输出：loss & policy entropy
+        #print(mcts_probs)
         if self.use_gpu:
             state_batch = Variable(torch.FloatTensor(state_batch).cuda())
             mcts_probs = Variable(torch.FloatTensor(mcts_probs).cuda())
