@@ -260,7 +260,8 @@ class Game(object):
         self.rec_board=[self.Board.num()]
         while True:
             Step+=1
-            print("Step : %d "%Step)
+            if is_shown:
+                print("Step : %d "%Step)
             current_player = self.Board.player
             player_in_turn = players[current_player]
             acts,probs = player_in_turn.get_action(self.Board)
@@ -291,7 +292,8 @@ class Game(object):
             self.Board.graphic()
         while True:
             Step+=1
-            print("Step : %d "%Step)
+            if is_shown:
+                print("Step : %d "%Step)
             acts,probs = player.get_action(self.Board, temp = temp, return_prob = 1)
             move=self.choose(acts,probs)
             self.Board.move(move)
@@ -326,5 +328,5 @@ Player2=MCTSPlayer(n_playout=1)
 real_board=Board()
 game=Game(real_board)
 
-winner=game.start_play(Player1,Player2,is_shown=1)
+winner=game.start_play(Player1,Player2,is_shown=0)
 
