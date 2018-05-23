@@ -1,13 +1,15 @@
 import numpy as np
 import copy
 from policy_value_net import PolicyValueNet
+import threading
+
 N=8
 def softmax(x):
     probs = np.exp(x - np.max(x))
     probs /= np.sum(probs)
     return probs
 
-
+lock = threading.Lock()
 class TreeNode(object):
     def __init__(self, parent, prior_p):
         self._parent = parent
@@ -21,7 +23,7 @@ class TreeNode(object):
         for action, prob in action_priors:
             if action not in self._children:
                 self._children[action] = TreeNode(self, prob)
-
+               
     def select(self, c_puct):
         return max(self._children.items(),
                    key=lambda act_node: act_node[1].get_value(c_puct))
@@ -33,6 +35,7 @@ class TreeNode(object):
     def update_recursive(self, leaf_value):
         if self._parent:
             self._parent.update_recursive(-leaf_value)
+
         self.update(leaf_value)
 
     def get_value(self, c_puct):
@@ -48,6 +51,46 @@ class TreeNode(object):
     def is_root(self):
         return self._parent is None
 
+class playoutThreading(threading.Thread):
+    def __init__(self, root, state, policy, lock, idx):
+        threading.Thread.__init__(self)
+
+        self.root = root
+        self.state = state
+        self.policy = policy
+        self.c_puct = 5
+        self.idx = idx
+        self.lock = lock
+
+    def run(self):
+        global lock
+        node = self.root
+        state = copy.deepcopy(self.state)
+
+        # select 阶段
+        while(1):
+            if node.is_leaf():
+                break
+            action, node = node.select(self.c_puct)
+            state.move(action)
+
+        # expand 阶段, 这个MCTS不存在simulate阶段
+        action_probs, leaf_value = self.policy(state)
+        end, winner = state.game_end()
+        lock.acquire()
+        if not end:
+            node.expand(action_probs)
+        else:
+            if winner == 0:
+                leaf_value = 0.0
+            else:
+                leaf_value = (
+                    1.0 if winner == state.player else -1.0
+                )
+        
+        node.update_recursive(-leaf_value)
+        lock.release()
+
 
 class MCTS(object):
 
@@ -56,7 +99,7 @@ class MCTS(object):
         self._root = TreeNode(None, 1.0)
         self._policy = policy_value_fn
         self._c_puct = c_puct
-        self._n_playout = n_playout
+        self._n_playout = n_playout        
 
     def _playout(self, state):
         node = self._root
@@ -66,9 +109,7 @@ class MCTS(object):
             if node.is_leaf():
                 break
             action, node = node.select(self._c_puct)
-            #print(1)
             state.move(action)
-            #print(2)
 
         # expand 阶段, 这个MCTS不存在simulate阶段
         
@@ -87,9 +128,16 @@ class MCTS(object):
         node.update_recursive(-leaf_value)
 
     def get_move_probs(self, state, temp=1e-3 , is_selfplay=1):
-        for n in range(self._n_playout):
-            state_copy = copy.deepcopy(state)
-            self._playout(state_copy)
+        PARALLEL = 400
+        lock = threading.Lock()
+        for n in range(self._n_playout // PARALLEL):
+            threads = []
+            for idx in range(PARALLEL):
+                threads.append(playoutThreading(self._root, state, 
+                    self._policy, lock, idx))
+                threads[-1].start()
+            for thread in threads:
+                thread.join()
 
         act_visits = [(act, node._n_visits)
                       for act, node in self._root._children.items()]
