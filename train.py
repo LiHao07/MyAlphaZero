@@ -29,9 +29,9 @@ class TrainPipeline():
         self.best_win_ratio = 0.0
         self.pure_mcts_playout_num = 1000
         if init_model:
-            self.policy_value_net = PolicyValueNet(model_file = init_model, use_gpu = False)
+            self.policy_value_net = PolicyValueNet(model_file = init_model, use_gpu = True)
         else:
-            self.policy_value_net = PolicyValueNet(use_gpu = False)
+            self.policy_value_net = PolicyValueNet(use_gpu = True)
         self.mcts_player = MCTSPlayer(self.policy_value_net.policy_value_fn,
                                       c_puct = self.c_puct,
                                       n_playout = self.n_playout,
