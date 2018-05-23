@@ -244,7 +244,7 @@ class Board(object):
 
     def graphic(self):#画棋盘
         str="X" if self.player==1 else "O"
-        s= "Player 1 with X\nPlayer 2 with O"
+        s= "Player 1 with X\nPlayer 2 with O\n"
         s+="nest step is : "+str+"\n"
         s+="  0 1 2 3 4 5 6 7\n"
         for i in range(8):

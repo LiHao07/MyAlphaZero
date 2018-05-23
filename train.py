@@ -5,6 +5,7 @@ from game import Board, Game
 from mcts_pure import MCTSPlayer as MCTS_Pure
 from mcts_alphaZero import MCTSPlayer_alphaZero as MCTSPlayer
 from policy_value_net import PolicyValueNet  
+import time
 N=8
 class TrainPipeline():
     def __init__(self, init_model=None):
@@ -15,7 +16,7 @@ class TrainPipeline():
         self.lr_multiplier = 1.0  # adaptively adjust the learning rate based on KL
 #                                                      self.board_height,
         self.temp = 1.0  # the temperature param
-        self.n_playout = 400  # num of simulations for each move
+        self.n_playout = 1600  # num of simulations for each move
         self.c_puct = 5
         self.buffer_size = 10
         self.batch_size = 512  # mini-batch size for training
@@ -24,7 +25,7 @@ class TrainPipeline():
         self.epochs = 5  # num of train_steps for each update
         self.kl_targ = 0.02
         self.check_freq = 50
-        self.game_batch_num = 1500
+        self.game_batch_num = 15000
         self.best_win_ratio = 0.0
         self.pure_mcts_playout_num = 1000
         if init_model:
@@ -147,15 +148,20 @@ class TrainPipeline():
     def run(self):
         """run the training pipeline"""
         try:
+            localtime = time.asctime( time.localtime(time.time()) )
+            print("本地时间为 :", localtime)
             for i in range(self.game_batch_num):
                 print("selfplay....")
                 self.collect_selfplay_data(self.play_batch_size)
                 print("selfplay done")
                 print("batch i = {}, episode_len = {}".format(i+1, self.episode_len))
+                localtime = time.asctime( time.localtime(time.time()) )
+                print("本地时间为 :", localtime)
                 if len(self.data_buffer) > self.batch_size:
                     loss, entropy = self.policy_update()
                 # check the performance of the current model,
                 # and save the model params
+                
                 if (i+1) % self.check_freq == 0:
                     print("current self-play batch = {}".format(i+1))
                     win_ratio = self.policy_evaluate()

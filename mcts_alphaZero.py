@@ -95,7 +95,7 @@ class MCTS(object):
         for i in range(len(acts)):
             act_probs[int(acts[i])]=visits[i]
 
-        act_probs = softmax(np.log(np.array(act_probs) + 1e-10))
+        act_probs = softmax(1.0/temp *np.log(np.array(act_probs) + 1e-10))
         if(np.sum(act_probs)>0.0001):
             act_probs/=np.sum(act_probs)
 
