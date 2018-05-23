@@ -66,9 +66,7 @@ class MCTS(object):
             if node.is_leaf():
                 break
             action, node = node.select(self._c_puct)
-            #print(1)
             state.move(action)
-            #print(2)
 
         # expand 阶段, 这个MCTS不存在simulate阶段
         
@@ -80,9 +78,7 @@ class MCTS(object):
             if winner == 0:
                 leaf_value = 0.0
             else:
-                leaf_value = (
-                    1.0 if winner == state.player else -1.0
-                )
+                leaf_value = 1.0 if winner == state.player else -1.0
 
         node.update_recursive(-leaf_value)
 
@@ -95,21 +91,24 @@ class MCTS(object):
                       for act, node in self._root._children.items()]
         #print(act_visits)
         acts, visits = zip(*act_visits)
-        act_probs=np.zeros(65)
+        act_probs=np.zeros(N*N)
         for i in range(len(acts)):
             act_probs[int(acts[i])]=visits[i]
 
         act_probs = softmax(np.log(np.array(act_probs) + 1e-10))
-        act_probs/=np.sum(act_probs)
+        if(np.sum(act_probs)>0.0001):
+            act_probs/=np.sum(act_probs)
 
         if is_selfplay==1:# 训练时加入噪音
                 act_probs=0.75*act_probs + 0.25*np.random.dirichlet(0.3*np.ones(len(act_probs)))
 
-        for i in range(65):
+        for i in range(N*N):
             if i not in acts:
                 act_probs[i]=0
-                
-        act_probs/=np.sum(act_probs)
+
+        if(np.sum(act_probs)>0.0001):
+            act_probs/=np.sum(act_probs)
+
         return act_probs
 
     def update_with_move(self, last_move):
@@ -135,11 +134,13 @@ class MCTSPlayer_alphaZero(object):
 
     def reset_player(self):
         self.mcts.update_with_move(-1)
+
     def update(self,move):
         if(self._is_selfplay):
             self.mcts.update_with_move(move) 
         else:
-            self.mcts.update_with_move(-1)    
+            self.mcts.update_with_move(-1)  
+
     def get_action(self, board, temp=1e-3, return_prob=0):
         # 给定棋盘状态，返回最佳的move（和move_probs向量）
         sensible_moves = board.availables
@@ -149,7 +150,7 @@ class MCTSPlayer_alphaZero(object):
             probs = self.mcts.get_move_probs(board, temp,self._is_selfplay)
             return probs
         else:
-            print("WARNING: the board is full")
+            return np.zeros(N*N)
 
     def __str__(self):
         return "MCTS {}".format(self.player)

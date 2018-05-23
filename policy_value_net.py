@@ -6,7 +6,7 @@ from torch.autograd import Variable
 import numpy as np
 
 N=8
-
+feature_turn=8
 def set_learning_rate(optimizer, lr):
     for param_group in optimizer.param_groups:
         param_group['lr'] = lr
@@ -16,12 +16,12 @@ class Net(nn.Module):
     def __init__(self):
         super(Net, self).__init__()
         
-        self.conv1 = nn.Conv2d(1, 32, kernel_size=3, padding=1)
+        self.conv1 = nn.Conv2d(feature_turn*2+1, 32, kernel_size=3, padding=1)
         self.conv2 = nn.Conv2d(32, 64, kernel_size=3, padding=1)
         self.conv3 = nn.Conv2d(64, 128, kernel_size=3, padding=1)
         
         self.act_conv1 = nn.Conv2d(128, 4, kernel_size=1)
-        self.act_fc1 = nn.Linear(4*N*N,N*N+1)
+        self.act_fc1 = nn.Linear(4*N*N,N*N)
         
         self.val_conv1 = nn.Conv2d(128, 2, kernel_size=1)
         self.val_fc1 = nn.Linear(2*N*N, 64)
@@ -71,17 +71,15 @@ class PolicyValueNet():
             return act_probs, value.data.numpy()
 
     def policy_value_fn(self, Board):#得到所有可行位置下棋的概率
-        #Board.graphic()
         legal_positions = Board.availables
-        #print(legal_positions)
-        current_state = np.ascontiguousarray(Board.board.reshape(-1, 1, N, N))
+        current_state = np.ascontiguousarray(Board.get_states().reshape(-1, feature_turn*2+1, N, N))
         if self.use_gpu:
             log_act_probs, value = self.policy_value_net(Variable(torch.from_numpy(current_state)).cuda().float())
             act_probs = np.exp(log_act_probs.data.cpu().numpy().flatten())
         else:
-            log_act_probs, value = self.policy_value_net(Variable(torch
-                .from_numpy(current_state)).float())
+            log_act_probs, value = self.policy_value_net(Variable(torch.from_numpy(current_state)).float())
             act_probs = np.exp(log_act_probs.data.numpy().flatten())
+
         act_probs = zip(legal_positions, act_probs[legal_positions])
         value = value.data[0][0]
         return act_probs, value

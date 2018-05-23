@@ -1,11 +1,14 @@
 import numpy as np
 import copy
 import sys
+import string
 from mcts_alphaZero import MCTSPlayer_alphaZero
 from mcts_pure import MCTSPlayer
 from policy_value_net import PolicyValueNet
 
 N = 8
+feature_turn=8
+
 
 class Board(object):
     def __init__(self):
@@ -15,14 +18,31 @@ class Board(object):
         self.p=np.ones((8,8))#可落子位置 0-不可落子 1-可落子
         self.end=False
         self.availables = self.get_availables()
+        self.states=np.zeros((feature_turn*2+1,N,N))
+        self.states_id=0
+
     def init(self):
         self.board = np.zeros((N,N))#棋盘 0-空 1-玩家1 2-玩家2
         self.player=1 #目前玩家
         self.n_skip=0#目前连续跳过回合，等于2时结束游戏
-        self.p=np.ones((8,8))#可落子位置 0-不可落子 1-可落子
+        self.p=np.ones((N,N))#可落子位置 0-不可落子 1-可落子
         self.end=False
         self.availables = self.get_availables()
-        
+        self.states=np.zeros((feature_turn*2+1,N,N))
+        self.states_id=0
+    
+    def get_states(self):
+        ans=np.zeros((feature_turn*2+1,N,N))
+        for i in range(feature_turn):
+            tmp=(self.states_id+i)%feature_turn
+            ans[i]=copy.deepcopy(self.states[tmp])
+            ans[i+feature_turn]=copy.deepcopy(self.states[tmp+feature_turn])
+        if(self.player==0):
+            ans[feature_turn*2]=np.zeros((N,N))
+        else:
+            ans[feature_turn*2]=np.ones((N,N))
+        return ans
+
     def find(self,x):#并查集
         if(self.fa[x]==x):
             return x
@@ -41,7 +61,7 @@ class Board(object):
             self.fa[x]=y
             
     def get_availables(self):#返回可落子位置的数字形式0~63
-        ans=[64]
+        ans=[]
         for i in range(8):
             for j in range(8):
                 if(self.p[i][j]==1):
@@ -143,6 +163,17 @@ class Board(object):
         self.player=3-self.player
         self.update_p()
         self.availables = self.get_availables()
+        self.states[self.states_id]=np.zeros((N,N))
+        for i in range(N):
+            for j in range(N):
+                if(self.board[i][j]==1):
+                    self.states[self.states_id][i][j]=1
+        self.states[self.states_id+feature_turn]=np.zeros((N,N))
+        for i in range(N):
+            for j in range(N):
+                if(self.board[i][j]==2):
+                    self.states[self.states_id+feature_turn][i][j]=1
+        self.states_id=(self.states_id+1)%feature_turn
         
     def move(self, action):#落子
         if(action==64):
@@ -212,12 +243,12 @@ class Board(object):
         return False,-1
 
     def graphic(self):#画棋盘
-        print("Player 1 with X\nPlayer 2 with O")
         str="X" if self.player==1 else "O"
-        print("nest step is : ",str,"\n")
-        s="  0 1 2 3 4 5 6 7\n"
+        s= "Player 1 with X\nPlayer 2 with O"
+        s+="nest step is : "+str+"\n"
+        s+="  0 1 2 3 4 5 6 7\n"
         for i in range(8):
-            s=s+s[(i+1)*2]
+            s=s+"%d"%i
             for j in range(8):
                 p = self.board[i][j]
                 if p == 1:
@@ -228,6 +259,7 @@ class Board(object):
                     s+=" ."
             s+="\n"
         print(s)
+
     def num(self):
         ans=int(0)
         for i in range(8):
@@ -236,22 +268,33 @@ class Board(object):
         return ans
 
 class Game(object):
-
     def __init__(self, Board):
         self.Board = Board
         self.rec_board=[]
+
     def choose(self,probs):
-        acts=range(0,65)
-        # for i in range(0,65):
-        #     if(probs[i]>0.0001):
-        #         print("%d %.4f"%(i,probs[i]))
+        acts=range(0,N*N)
+        if(np.sum(probs)<0.0001):
+            return N*N,probs
+
         while(1):
             move=np.random.choice(acts,p=probs)
             board2=copy.deepcopy(self.Board)
             board2.move(move)
             tmp=board2.num()
-            if(move==64 or (tmp not in self.rec_board)):
-                return move
+            if(tmp not in self.rec_board):
+                return move,probs
+            probs[move]=0
+            if(np.sum(probs)<0.0001):
+                return N*N,probs
+            probs/=np.sum(probs)
+
+    def skip_can_win(self):
+        board2=copy.deepcopy(self.Board)
+        current_player=board2.player
+        board2.move(N*N)
+        end,winner=board2.game_end()
+        return (winner==current_player)
 
     def start_play(self, player1, player2, is_shown=1):#两人对战 player1先手 返回胜利方
         self.Board.init()
@@ -268,10 +311,19 @@ class Game(object):
                 print("Step : %d "%Step)
             current_player = self.Board.player
             player_in_turn = players[current_player]
+            #选动作
+            if(self.Board.n_skip==1 and self.skip_can_win()):
+                if is_shown:
+                        print("Game end. Winner is", players[current_player])
+                return current_player
+
             probs = player_in_turn.get_action(self.Board)
-            move=self.choose(probs)
+            move,probs=self.choose(probs)
+            #执行动作
             self.Board.move(move)
+            #更新mct
             player_in_turn.update(move)
+            #记录局面，防全同
             self.rec_board.append(self.Board.num())
 
             if is_shown:
@@ -298,22 +350,38 @@ class Game(object):
             Step+=1
             if is_shown:
                 print("Step : %d "%Step)
+
+            #选动作
+            if(self.Board.n_skip==1 and self.skip_can_win()):
+                winners_z = np.zeros(len(current_players))
+                if winner != 0:
+                    winners_z[np.array(current_players) == winner] = 1.0
+                    winners_z[np.array(current_players) != winner] = -1.0
+                
+                player.reset_player()
+                if is_shown:
+                        print("Game end. Winner is", self.Board.player)
+                return self.Board.player,zip(states, mcts_probs, winners_z)
+
             probs = player.get_action(self.Board, temp = temp, return_prob = 1)
-            move=self.choose(probs)
-            self.Board.move(move)
-            
-            states.append([self.Board.board])
+
+            move,probs=self.choose(probs)
+            #存数据
+            states.append(self.Board.get_states)
             mcts_probs.append(probs)
             current_players.append(self.Board.player)
-            
+            #执行动作
+            self.Board.move(move)
+            #更新mct
             player.update(move)
+            #记录局面，防全同
             self.rec_board.append(self.Board.num())
 
             if is_shown:
                 self.Board.graphic()
+
             end, winner = self.Board.game_end()
             if end:
-                
                 winners_z = np.zeros(len(current_players))
                 if winner != 0:
                     winners_z[np.array(current_players) == winner] = 1.0
@@ -326,11 +394,4 @@ class Game(object):
                     else:
                         print("Game end. Tie")
                 return winner, zip(states, mcts_probs, winners_z)
-# net=PolicyValueNet()
-# Player1=MCTSPlayer_alphaZero(net.policy_value_fn,n_playout=1,is_selfplay=1)
-# Player2=MCTSPlayer_alphaZero(net.policy_value_fn,n_playout=1,is_selfplay=1)
-# real_board=Board()
-# game=Game(real_board)
-
-# winner=game.start_play(Player1,Player2,is_shown=1)
 

@@ -1,6 +1,9 @@
 import numpy as np
 import copy
+import sys
 from operator import itemgetter
+
+N=8
 
 def softmax(x):
     probs = np.exp(x - np.max(x))
@@ -74,7 +77,7 @@ class MCTS(object):
             if node.is_leaf():
                 break
             action, node = node.select(self._c_puct)
-            state.do_move(action)
+            state.move(action)
 
         # expand 阶段, 这个MCTS不存在simulate阶段
         action_probs, _ = self._policy(state)
@@ -84,18 +87,34 @@ class MCTS(object):
         leaf_value = self._evaluate_rollout(state)
         node.update_recursive(-leaf_value)
 
+    def skip_can_win(self,board):
+        board2=copy.deepcopy(board)
+        current_player=board2.player
+        board2.move(N*N)
+        end,winner=board2.game_end()
+        return (winner==current_player)
+
     def _evaluate_rollout(self, state, limit=1000):
         player = state.player
-        for i in range(limit):
+        """for i in range(limit):
             end, winner = state.game_end()
             if end:
                 break
-            action_probs = rollout_policy_fn(state)
-            max_action = max(action_probs, key=itemgetter(1))[0]
+            if(state.n_skip==1 and self.skip_can_win(state)):
+                max_action=N*N
+            else:
+                if(len(state.availables)==0):
+                    max_action=N*N
+                else:
+                    action_probs = rollout_policy_fn(state)
+                    max_action = max(action_probs, key=itemgetter(1))[0]
             state.move(max_action)
+            state.graphic()
         else:
             print("WARNING: rollout reached move limit")
-        if winner == -1:
+            sys.exit()"""
+        winner=state.get_winner()
+        if winner == 0:
             return 0
         else:
             return 1 if winner == player else -1
@@ -109,12 +128,12 @@ class MCTS(object):
                       for act, node in self._root._children.items()]
         
         acts, visits = zip(*act_visits)
-        act_probs=np.zeros(65)
+        act_probs=np.zeros(N*N)
         for i in range(len(acts)):
             act_probs[int(acts[i])]=visits[i]
 
         act_probs = softmax(np.log(np.array(act_probs) + 1e-10))
-        for i in range(65):
+        for i in range(N*N):
             if i not in acts:
                 act_probs[i]=0
         act_probs/=np.sum(act_probs)
@@ -151,7 +170,7 @@ class MCTSPlayer(object):
             probs = self.mcts.get_move(board)
             return probs
         else:
-            print("WARNING: the board is full")
+            return np.zeros(N*N)
 
     def __str__(self):
         return "MCTS {}".format(self.player)

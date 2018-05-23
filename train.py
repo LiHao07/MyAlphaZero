@@ -17,7 +17,7 @@ class TrainPipeline():
         self.temp = 1.0  # the temperature param
         self.n_playout = 400  # num of simulations for each move
         self.c_puct = 5
-        self.buffer_size = 10000
+        self.buffer_size = 10
         self.batch_size = 512  # mini-batch size for training
         self.data_buffer = deque(maxlen=self.buffer_size)
         self.play_batch_size = 1
@@ -72,8 +72,7 @@ class TrainPipeline():
             play_data = list(play_data)[:]
             self.episode_len = len(play_data)
             # augment the data
-#            print(play_data)
-#            play_data = self.get_equi_data(play_data)
+     #       play_data = self.get_equi_data(play_data)
             self.data_buffer.extend(play_data)
 
     def policy_update(self):
@@ -134,9 +133,9 @@ class TrainPipeline():
                                      n_playout=self.pure_mcts_playout_num)
         win_cnt = defaultdict(int)
         for i in range(n_games):
+            print(i)
             winner = self.game.start_play(current_mcts_player,
                                           pure_mcts_player,
-                                          start_player=i % 2,
                                           is_shown=0)
             win_cnt[winner] += 1
         win_ratio = 1.0*(win_cnt[1] + 0.5*win_cnt[-1]) / n_games
