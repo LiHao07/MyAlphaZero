@@ -10,6 +10,11 @@ def softmax(x):
     return probs
 
 lock = threading.Lock()
+eval_lock = threading.Condition()
+result_lock = threading.Condition()
+evalset = {}
+resultset = {}
+
 class TreeNode(object):
     def __init__(self, parent, prior_p):
         self._parent = parent
@@ -51,6 +56,40 @@ class TreeNode(object):
     def is_root(self):
         return self._parent is None
 
+
+class evaluateThreading(threading.Thread):
+    def __init__(self, policy, n_playout):
+        threading.Thread.__init__(self)
+        
+        self.policy = policy
+        self.n_playout = n_playout
+
+    def run(self):
+        global eval_lock, result_lock, evalset, resultset
+        batch = 20
+        for i in range(self.n_playout // batch):
+            eval_lock.acquire()
+            while (len(evalset) < batch):
+                eval_lock.wait()
+
+            idxs = list(evalset.keys())[0:batch]
+            states = list(evalset.values())[0:batch]
+
+            for k in idxs:
+                del evalset[k]
+            eval_lock.release()
+
+            res = [self.policy(states[i]) for i in range(batch)]
+
+            result_lock.acquire()
+            for i in range(batch):
+                resultset[idxs[i]] = res[i]
+            result_lock.notifyAll()
+            result_lock.release()
+
+
+
+
 class playoutThreading(threading.Thread):
     def __init__(self, root, state, policy, lock, idx):
         threading.Thread.__init__(self)
@@ -63,7 +102,8 @@ class playoutThreading(threading.Thread):
         self.lock = lock
 
     def run(self):
-        global lock
+        global lock, eval_lock, result_lock, evalset, resultset
+
         node = self.root
         state = copy.deepcopy(self.state)
 
@@ -75,7 +115,19 @@ class playoutThreading(threading.Thread):
             state.move(action)
 
         # expand 阶段, 这个MCTS不存在simulate阶段
-        action_probs, leaf_value = self.policy(state)
+        
+        eval_lock.acquire()
+        evalset[self.idx] = state
+        eval_lock.notify()
+        eval_lock.release()
+        
+        result_lock.acquire()
+        while self.idx not in resultset.keys():
+            result_lock.wait()
+        action_probs, leaf_value = resultset[self.idx]
+        del resultset[self.idx]
+        result_lock.release()
+        
         end, winner = state.game_end()
         lock.acquire()
         if not end:
@@ -99,45 +151,25 @@ class MCTS(object):
         self._root = TreeNode(None, 1.0)
         self._policy = policy_value_fn
         self._c_puct = c_puct
-        self._n_playout = n_playout        
-
-    def _playout(self, state):
-        node = self._root
-
-        # select 阶段
-        while(1):
-            if node.is_leaf():
-                break
-            action, node = node.select(self._c_puct)
-            state.move(action)
-
-        # expand 阶段, 这个MCTS不存在simulate阶段
-        
-        action_probs, leaf_value = self._policy(state)
-        end, winner = state.game_end()
-        if not end:
-            node.expand(action_probs)
-        else:
-            if winner == 0:
-                leaf_value = 0.0
-            else:
-                leaf_value = (
-                    1.0 if winner == state.player else -1.0
-                )
-
-        node.update_recursive(-leaf_value)
+        self._n_playout = n_playout      
 
     def get_move_probs(self, state, temp=1e-3 , is_selfplay=1):
-        PARALLEL = 400
-        lock = threading.Lock()
+        evalthread = evaluateThreading(self._policy, self._n_playout)
+        evalthread.start()
+
+        PARALLEL = self._n_playout # 虽然不知道为什么，但这样设好像性能最好
+        idx = 0
         for n in range(self._n_playout // PARALLEL):
             threads = []
-            for idx in range(PARALLEL):
+            for i in range(PARALLEL):
+                idx += 1
                 threads.append(playoutThreading(self._root, state, 
                     self._policy, lock, idx))
                 threads[-1].start()
+
             for thread in threads:
                 thread.join()
+        evalthread.join()
 
         act_visits = [(act, node._n_visits)
                       for act, node in self._root._children.items()]
